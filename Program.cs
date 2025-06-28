@@ -1,4 +1,6 @@
 using Google.Cloud.Firestore;
+using Microsoft.Extensions.Caching.Memory;
+using platejury_api.Domain;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -6,7 +8,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
 // Register Firestore
-// Register FirestoreDb as a singleton service
 builder.Services.AddSingleton(provider =>
 {
     var config = provider.GetRequiredService<IConfiguration>();
@@ -14,17 +15,32 @@ builder.Services.AddSingleton(provider =>
     return FirestoreDb.Create(projectId);
 });
 
+// Register cache
+builder.Services.AddMemoryCache();
+
 var app = builder.Build();
 
-// Configure firestore
-var db = FirestoreDb.Create(builder.Configuration["GoogleCloud:ProjectId"]);
-
 // Endpoints
-app.MapGet("/history", async () =>
+app.MapGet("/history", async (FirestoreDb db, IMemoryCache cache) =>
 {
-    var collection = db.Collection("history");
-    var snapshot = await collection.GetSnapshotAsync();
-    var documents = snapshot.Documents.Select(doc => doc.ToDictionary()).ToList();
+    const string cacheKey = "firestore_history";
+
+    // Check cache
+    if (cache.TryGetValue(cacheKey, out List<HistoryTrack>? cachedData))
+    {
+        return Results.Ok(cachedData);
+    }
+
+    var snapshot = await db.Collection("history").GetSnapshotAsync();
+    var documents = snapshot.Documents
+        .Select(doc => doc.ConvertTo<HistoryTrack>())
+        .ToList();
+
+    // Cache result
+    var cacheOptions = new MemoryCacheEntryOptions()
+        .SetAbsoluteExpiration(TimeSpan.FromMinutes(60));
+
+    cache.Set(cacheKey, documents, cacheOptions);
 
     return Results.Ok(documents);
 });
