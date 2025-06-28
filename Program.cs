@@ -1,12 +1,13 @@
 using Google.Cloud.Firestore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using platejury_api.Domain;
+using platejury_api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add configuration
 builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-
 // Register Firestore
 builder.Services.AddSingleton(provider =>
 {
@@ -18,30 +19,27 @@ builder.Services.AddSingleton(provider =>
 // Register cache
 builder.Services.AddMemoryCache();
 
+// Register cache settings from config
+builder.Services.Configure<CacheSettings>(
+    builder.Configuration.GetSection("CacheSettings"));
+builder.Services.AddSingleton(resolver =>
+    resolver.GetRequiredService<IOptions<CacheSettings>>().Value);
+
+// Register repository service
+builder.Services.AddScoped(typeof(FirestoreRepository<>));
+
 var app = builder.Build();
 
 // Endpoints
-app.MapGet("/history", async (FirestoreDb db, IMemoryCache cache) =>
+app.MapGet("/history", async (FirestoreRepository<HistoryTrack> repo) =>
 {
-    const string cacheKey = "firestore_history";
+    var documents = await repo.GetCollectionAsync("history");
+    return Results.Ok(documents);
+});
 
-    // Check cache
-    if (cache.TryGetValue(cacheKey, out List<HistoryTrack>? cachedData))
-    {
-        return Results.Ok(cachedData);
-    }
-
-    var snapshot = await db.Collection("history").GetSnapshotAsync();
-    var documents = snapshot.Documents
-        .Select(doc => doc.ConvertTo<HistoryTrack>())
-        .ToList();
-
-    // Cache result
-    var cacheOptions = new MemoryCacheEntryOptions()
-        .SetAbsoluteExpiration(TimeSpan.FromMinutes(60));
-
-    cache.Set(cacheKey, documents, cacheOptions);
-
+app.MapGet("/votes", async (FirestoreRepository<Votes> repo) =>
+{
+    var documents = await repo.GetCollectionAsync("votes");
     return Results.Ok(documents);
 });
 
