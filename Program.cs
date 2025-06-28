@@ -27,7 +27,30 @@ builder.Services.AddSingleton(resolver =>
 // Register repository service
 builder.Services.AddScoped(typeof(FirestoreRepository<>));
 
+// Read API key from config
+var apiKey = builder.Configuration["ApiKey"] ?? throw new Exception("ApiKey missing from configuration");
+
 var app = builder.Build();
+
+// API key middleware
+app.Use(async (context, next) =>
+{
+    if (!context.Request.Headers.TryGetValue("X-API-Key", out var extractedApiKey))
+    {
+        context.Response.StatusCode = 401;
+        await context.Response.WriteAsync("API Key was not provided.");
+        return;
+    }
+
+    if (!apiKey.Equals(extractedApiKey))
+    {
+        context.Response.StatusCode = 401;
+        await context.Response.WriteAsync("Unauthorized client.");
+        return;
+    }
+
+    await next();
+});
 
 // Endpoints
 app.MapGet("/history", async (FirestoreRepository<HistoryTrack> repo) =>
