@@ -1,5 +1,4 @@
 using Google.Cloud.Firestore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using platejury_api.Domain;
 using platejury_api.Services;
@@ -40,6 +39,12 @@ app.MapGet("/history", async (FirestoreRepository<HistoryTrack> repo) =>
 app.MapGet("/votes", async (FirestoreRepository<Votes> repo) =>
 {
     var documents = await repo.GetCollectionAsync("votes");
+    return Results.Ok(documents);
+});
+
+app.MapGet("/themes", async (FirestoreRepository<Theme> repo) =>
+{
+    var documents = await repo.GetCollectionAsync("theme");
     return Results.Ok(documents);
 });
 
